@@ -15,34 +15,61 @@ func routes(_ app: Application) throws {
         return encoded!
     }
     
-    app.get("username") { req -> String in
+    app.get("username", ":name") { req -> String in
         guard let name = req.parameters.get("name") else {
             throw Abort(.internalServerError)
         }
         return "Hello, \(name)"
     }
     
-    app.post("info") { req -> String in
-        var data:UserInfo?
-        
-        do {
-            data = try req.content.decode(UserInfo.self)
-        } catch let error {
-            print(error.localizedDescription)
-        }
-        if let data = data, let id = data.id, let name = data.name, let age = data.age, let address = data.address {
-            return "id: \(id) \nName: \(name) \nAge: \(age) \nAddress:\(address)"
-        } else { throw Abort(.internalServerError) }
-    }
-    
-    app.post("saveuser") { req -> String in
+    app.get("getuserbyname") { req -> EventLoopFuture<[UserInfo.Public]> in
         
         let data = try req.content.decode(UserInfo.self)
-        let userinfo = UserInfo(name: data.name, age: data.age, address: data.address)
         
-        let _ = userinfo.create(on: app.db).map { userinfo }
+        return UserInfo
+            .query(on: req.db)
+            .filter(\.$name, .equal, data.name)
+            .all()
+            .map { items in
+                return items.map({UserInfo.Public(id: $0.id, name: $0.name, age: $0.age, address: $0.address)})
+            }
+    }
+    
+    app.post("info") { req -> String in
+        do {
+            let data = try req.content.decode(UserInfo.self)
+            
+            if let name = data.name, let age = data.age, let address = data.address {
+                return "\nName: \(name) \nAge: \(age) \nAddress:\(address)"
+            } else { throw Abort(.internalServerError) }
+        } catch let error {
+            return error.localizedDescription
+        }
+    }
+    
+    app.post("createuser") { request -> EventLoopFuture<UserInfo.Public> in
         
-        return String(bytes:
-                        try JSONEncoder().encode(Response(httpStatus: .ok, body: UserInfo(id: userinfo.id, name: userinfo.name, age: userinfo.age, address: userinfo.address))), encoding: .utf8) ?? ""
+        let parsed = try request.content.decode(UserInfo.Create.self)
+        
+        let userInfo = UserInfo(name: parsed.name, age: parsed.age, address: parsed.address)
+        return userInfo.save(on: request.db).map {
+            UserInfo.Public(id: userInfo.id, name: userInfo.name, age: userInfo.age, address: userInfo.address)
+        }
+    }
+    
+    app.get("allusers") { req -> EventLoopFuture<[UserInfo]> in
+        return UserInfo.query(on: app.db).all()
+    }
+    
+    app.post("getuserby") { req -> EventLoopFuture<[UserInfo.Public]> in
+        let data = try req.content.decode(UserInfo.self)
+        return UserInfo
+            .query(on: req.db)
+            .filter(\.$age, .greaterThan, 10)
+            .all()
+            .map { items in
+                return items.map({UserInfo.Public(id: $0.id, name: $0.name, age: $0.age, address: $0.address)})
+            }
     }
 }
+

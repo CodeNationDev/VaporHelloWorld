@@ -29,6 +29,22 @@ final class UserInfo: Content, Model {
     }
 }
 
+extension UserInfo {
+    
+    struct Create: Content {
+        let name: String
+        let age: Int
+        let address: String
+    }
+    
+    struct Public: Content {
+        let id: UUID?
+        let name: String?
+        let age: Int?
+        let address: String?
+    }
+}
+
 extension UserInfo: Migration {
     func prepare(on database: Database) -> EventLoopFuture<Void> {
         database.eventLoop.flatten([
